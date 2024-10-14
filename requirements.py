@@ -1,0 +1,7 @@
+pdfminer
+streamlit
+selenium
+BeautifulSoup4
+pandas
+request
+st_aggrid
