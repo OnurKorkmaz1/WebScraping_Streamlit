@@ -12,7 +12,7 @@ def main():
 
 
 # streamlit run 1_🌐_Homepage.py
-
+# python -m streamlit run 1_🌐_Homepage.py
 
 if __name__ == "__main__":
     main()
