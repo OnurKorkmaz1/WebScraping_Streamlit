@@ -7,5 +7,4 @@ pytesseract
 googletrans
 pdf2image
 pdfminer
-request
 pandas
