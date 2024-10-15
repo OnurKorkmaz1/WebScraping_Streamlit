@@ -14,6 +14,11 @@ from googletrans import Translator
 from io import BytesIO
 import zipfile
 
+from webdriver_manager.chrome import ChromeDriverManager
+from webdriver_manager.core.os_manager import ChromeType
+
+
+
 
 
 st.set_page_config(layout="wide")
@@ -55,14 +60,22 @@ footer {
 st.markdown(hide, unsafe_allow_html=True)
 
 
-# Veriyi çekmek için fonksiyon
-def fetch_data():
+@st.cache_resource
+def get_driver():
     chrome_options = Options()
     chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--disable-gpu")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
+    
+    # ChromeDriver kurulumu
+    return webdriver.Chrome(
+        service=Service(ChromeDriverManager(chrome_type=ChromeType.CHROMIUM).install()),
+        options=chrome_options,
+    )
 
-    driver = webdriver.Chrome(service=Service(), options=chrome_options)
+def fetch_data():
+    driver = get_driver()
     driver.get("https://www.aiib.org/en/opportunities/business/project-procurement/list.html")
     html = driver.page_source
     driver.quit()
@@ -312,5 +325,4 @@ if st.button("Çeviri"):
         st.warning("Henüz bir PDF dosyası indirilmedi. Lütfen bir PDF seçin ve indirin.")
 
     
-
 
