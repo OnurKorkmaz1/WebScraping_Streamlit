@@ -8,3 +8,5 @@ googletrans
 pdf2image
 pdfminer
 pandas
+webdriver
+
