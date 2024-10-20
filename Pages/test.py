@@ -12,7 +12,13 @@ import pytesseract
 from functions import convert_pdf_to_txt_pages, convert_pdf_to_txt_file, images_to_txt
 from googletrans import Translator
 from io import BytesIO
+import zipfile
 
+
+
+st.set_page_config(layout="wide")
+
+# Dillerin sözlüğü
 languages = {
     'English': 'eng',
     'French': 'fra',
@@ -20,117 +26,18 @@ languages = {
     'Spanish': 'spa',
 }
 
-
-
-# Translating Code
-import streamlit as st
-from PIL import Image
-import pytesseract
-
-def translate_document(pdf_file, ocr_box, textOutput, languages, translator):
-    path = pdf_file.read()
-    file_extension = "pdf"
-
-    if pdf_file:
-        path = pdf_file.read()
-
-        if file_extension == "pdf":
-            if ocr_box:
-                option = st.selectbox('Select the document language', list(languages.keys()))
-
-            if textOutput == 'One text file (.txt)':
-                if ocr_box:
-                    texts, nbPages = images_to_txt(path, languages[option])
-                else:
-                    text_data_f, nbPages = convert_pdf_to_txt_file(pdf_file)
-
-                if text_data_f.strip():
-                    if st.button("Çevir"):
-                        try:
-                            translated_chunks = []
-                            chunks = text_data_f.split('\n\n')
-
-                            for chunk in chunks:
-                                if chunk.strip():
-                                    translated = translator.translate(chunk, dest='tr')
-                                    if translated is not None:
-                                        translated_chunks.append(translated.text.replace('\n', ' '))
-
-                            if translated_chunks:
-                                translated_text = '\n\n'.join(translated_chunks)
-                                st.subheader("Çeviri Sonucu")
-                                st.text_area("Çeviri Metni", value=translated_text, height=300)
-                            else:
-                                st.warning("Çeviri için hiçbir metin bulunamadı.")
-
-                        except Exception as e:
-                            st.error(f"Çeviri hatası: {str(e)}")
-                else:
-                    st.warning("PDF'den alınan metin boş.")
-
-            else:
-                if ocr_box:
-                    text_data, nbPages = images_to_txt(path, languages[option])
-                else:
-                    text_data, nbPages = convert_pdf_to_txt_pages(pdf_file)
-
-                for i, page_text in enumerate(text_data):
-                    if page_text.strip():
-                        if st.button(f"Çevir - Sayfa {i + 1}"):
-                            try:
-                                translated_chunks = []
-                                chunks = page_text.split('\n\n')
-
-                                for chunk in chunks:
-                                    if chunk.strip():
-                                        translated = translator.translate(chunk, dest='tr')
-                                        if translated is not None:
-                                            translated_chunks.append(translated.text.replace('\n', ' '))
-
-                                if translated_chunks:
-                                    translated_text = '\n\n'.join(translated_chunks)
-                                    st.subheader(f"Çeviri Sonucu - Sayfa {i + 1}")
-                                    st.text_area(f"Çeviri Metni - Sayfa {i + 1}", value=translated_text, height=300)
-                                else:
-                                    st.warning(f"Sayfa {i + 1} için çeviri için hiçbir metin bulunamadı.")
-
-                            except Exception as e:
-                                st.error(f"Çeviri hatası: {str(e)}")
-                    else:
-                        st.warning(f"Sayfa {i + 1} için alınan metin boş.")
-
-        else:
-            option = st.selectbox("What's the language of the text in the image?", list(languages.keys()))
-            pil_image = Image.open(pdf_file)
-            text = pytesseract.image_to_string(pil_image, lang=languages[option])
-            
-            if text.strip():
-                if st.button("Çevir"):
-                    try:
-                        translated = translator.translate(text, dest='tr')
-                        if translated is not None:
-                            st.subheader("Çeviri Sonucu")
-                            st.markdown(f"<div style='font-size: 12px;'>{translated.text}</div>", unsafe_allow_html=True)
-                        else:
-                            st.error("Çeviri alınamadı.")
-                    except Exception as e:
-                        st.error(f"Çeviri hatası: {str(e)}")
-            else:
-                st.warning("Resimden alınan metin boş.")
-
-
-
-
 translator = Translator()
 
+# Yan menü
 with st.sidebar:
     st.title(":outbox_tray: PDF to Text")
     textOutput = st.selectbox(
         "How do you want your output text?",
-        ('One text file (.txt)', 'Text file per page (ZIP)'))
+        ('One text file (.txt)', 'Text file per page (ZIP)')
+    )
     ocr_box = st.checkbox('Enable OCR (scanned document)')
 
-# CSS for hiding Streamlit footer and menu
+# CSS ayarları
 hide = """
 <style>
 footer {
@@ -147,9 +54,6 @@ footer {
 """
 st.markdown(hide, unsafe_allow_html=True)
 
-# Initialize pdf_file in session state
-if 'pdf_file' not in st.session_state:
-    st.session_state.pdf_file = None
 
 # Veriyi çekmek için fonksiyon
 def fetch_data():
@@ -259,16 +163,21 @@ for index in range(len(edited_df)):
 
 # Seçilen satırların PDF linkini yazdırma
 selected_pdf_link = None  
+pdf_file_path = None  # pdf_file_path'i burada başlat
+
 if st.button("Seçilen PDF Linkini Göster"):
-    selected_rows = edited_df[edited_df['Select']]  
+    selected_rows = edited_df[edited_df['Select']]
+    
     if not selected_rows.empty:  
         first_row = selected_rows.iloc[0]
+       
         selected_pdf_link = first_row.get('PDF LINK')
+
         if selected_pdf_link:
-            st.success("Seçilen PDF Linki gösteriliyor.")  
+            st.success("Seçilen PDF Linki gösteriliyor.")
             
             # PDF'yi göster
-            display_pdf(selected_pdf_link)  
+            display_pdf(selected_pdf_link)
 
             # PDF'yi indir
             headers = {
@@ -283,45 +192,121 @@ if st.button("Seçilen PDF Linkini Göster"):
                 if not os.path.exists(downloads_dir):
                     os.makedirs(downloads_dir)
 
-                pdf_file_path = os.path.join(downloads_dir, f"{project_name}.pdf")  
+                pdf_file_path = os.path.join(downloads_dir, f"{project_name}.pdf")
                 with open(pdf_file_path, 'wb') as f:
                     f.write(response.content)
-                st.write(pdf_file_path)
 
-                # PDF dosyasını oku
-                if os.path.exists(pdf_file_path):
-                    with open(pdf_file_path, 'rb') as f:
-                        filePDF = BytesIO(f.read())  # PDF dosyasını BytesIO nesnesine çevir
-                        pdf_file = filePDF
-
-
-                if os.path.exists(pdf_file_path):
-                    with open(pdf_file_path, 'rb') as f:
-                        st.session_state.pdf_file = BytesIO(f.read())  # Store in session state
-
-                #translate_document(st.session_state.pdf_file, ocr_box, textOutput, languages, translator)
-
+                # pdf_file_path'i session_state içinde saklayalım
+                st.session_state.pdf_file_path = pdf_file_path
                 
-
             else:
                 st.error(f"PDF indirilirken bir hata oluştu: {response.status_code} - {response.reason}")
-
         else:
             st.warning("Seçilen satırda PDF linki yok.")
     else:
         st.warning("Hiçbir satır seçilmedi.")
 
-
-
-
-
-
-
-
-
+# PDF File Path'i göster
+if 'pdf_file_path' in st.session_state:
+    st.write("PDF File Path:", st.session_state.pdf_file_path)
+else:
+    st.write("Henüz bir PDF dosyası indirilmedi.")
 
 # Yenileme butonu
 if st.button("Yenile"):
     st.session_state.df = fetch_data()  
     st.session_state.checked_status = [False] * len(st.session_state.df)  
     st.success("Veri yenilendi.")
+
+# Çeviri butonuna tıklayınca
+if st.button("Çeviri"):
+    if 'pdf_file_path' in st.session_state:  # pdf_file_path'in session_state içinde olup olmadığını kontrol et
+        pdf_file_path = st.session_state.pdf_file_path  # session_state'den pdf_file_path'i al
+
+        with open(pdf_file_path, "rb") as pdf_file:
+            path = pdf_file.read()
+            file_extension = pdf_file.name.split(".")[-1]
+
+            if file_extension == "pdf":
+                if ocr_box:
+                    option = st.selectbox('Select the document language', list(languages.keys()))
+
+                if textOutput == 'One text file (.txt)':
+                    if ocr_box:
+                        texts, nbPages = images_to_txt(pdf_file_path, languages[option])
+                    else:
+                        text_data_f, nbPages = convert_pdf_to_txt_file(pdf_file)
+
+                    if text_data_f.strip():  
+                        translated_chunks = []
+                        chunks = text_data_f.split('\n\n')
+
+                        for chunk in chunks:
+                            if chunk.strip():  # Boş chunk'ları atla
+                                translated = translator.translate(chunk, dest='tr')
+                                if translated is not None:
+                                    translated_chunks.append(translated.text.replace('\n', ' '))  # Satır sonlarını kaldır
+
+                        if translated_chunks:  # Eğer en az bir çeviri varsa
+                            translated_text = '\n\n'.join(translated_chunks)  # Paragraflar arasında iki boşluk bırak
+                            st.subheader("Çeviri Sonucu")
+                            
+                            with st.container():  # Container içinde text_area
+                                st.text_area("Çeviri Metni", value=translated_text, height=700)
+                        else:
+                            st.warning("Çeviri için hiçbir metin bulunamadı.")
+
+                    else:
+                        st.warning("PDF'den alınan metin boş.")
+
+                else:
+                    if ocr_box:
+                        text_data, nbPages = images_to_txt(pdf_file_path, languages[option])
+                    else:
+                        text_data, nbPages = convert_pdf_to_txt_pages(pdf_file)
+
+                    for i, page_text in enumerate(text_data):
+                        if page_text.strip():
+                            if st.button(f"Çevir - Sayfa {i + 1}"):
+                                try:
+                                    translated_chunks = []
+                                    chunks = page_text.split('\n\n')
+
+                                    for chunk in chunks:
+                                        if chunk.strip():  # Boş chunk'ları atla
+                                            translated = translator.translate(chunk, dest='tr')
+                                            if translated is not None:
+                                                translated_chunks.append(translated.text.replace('\n', ' '))  # Satır sonlarını kaldır
+
+                                    if translated_chunks:  # Eğer en az bir çeviri varsa
+                                        translated_text = '\n\n'.join(translated_chunks)  # Paragraflar arasında iki boşluk bırak
+                                        st.subheader(f"Çeviri Sonucu - Sayfa {i + 1}")
+                                        st.text_area(f"Çeviri Metni - Sayfa {i + 1}", value=translated_text, height=300)  # Kullanıcı düzenleyebilir
+                                    else:
+                                        st.warning(f"Sayfa {i + 1} için çeviri için hiçbir metin bulunamadı.")
+
+                                except Exception as e:
+                                    st.error(f"Çeviri hatası: {str(e)}")
+                        else:
+                            st.warning(f"Sayfa {i + 1} için alınan metin boş.")
+
+            else:
+                option = st.selectbox("What's the language of the text in the image?", list(languages.keys()))
+                pil_image = Image.open(pdf_file_path)
+                text = pytesseract.image_to_string(pil_image, lang=languages[option])
+
+                if text.strip():
+                    if st.button("Çevir"):
+                        try:
+                            translated = translator.translate(text, dest='tr')
+                            if translated is not None:
+                                st.subheader("Çeviri Sonucu")
+                                st.markdown(f"<div style='font-size: 12px;'>{translated.text}</div>", unsafe_allow_html=True)
+                            else:
+                                st.error("Çeviri alınamadı.")
+                        except Exception as e:
+                            st.error(f"Çeviri hatası: {str(e)}")
+                else:
+                    st.warning("Resimden alınan metin boş.")
+    else:
+        st.warning("Henüz bir PDF dosyası indirilmedi. Lütfen bir PDF seçin ve indirin.")
